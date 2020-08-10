@@ -18,7 +18,6 @@ Primarily written for personal use, unfit for general public usage.
 |  graconText.py      | Converts folder of text files to assembler include files (wla-dx format). | Supports multiple languages, generates corresponding lookup tables. |
 
 > **Dependencies**
-> - GNU make
 > - python2.7
 > - [lz4](https://github.com/lz4/lz4)
 

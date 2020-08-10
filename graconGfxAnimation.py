@@ -270,10 +270,6 @@ def main():
 
   options.set('transcol', graconGfx.Color(graconGfx.getColorTuple(options.get('transcol'))))
   
-  if sys.hexversion < 0x02060000 or sys.hexversion >= 0x03000000:
-    logging.error( 'Sorry, this program only runs with python 2.6+, but not 3.x+ at the moment.')
-    sys.exit(1)
-  
   if not os.path.exists(options.get('infolder')):
 	logging.error( 'Error, input folder "%s" is nonexistant.' % options.get('infolder') )
 	sys.exit(1)
