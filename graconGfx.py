@@ -802,7 +802,7 @@ def partitionGlobalPalette2(palettes, options):
     
   return partitionedPalettes
 
-def fickFackHure(palettes, options):
+def fetchGlobalPaletteReference(palettes, options):
   partitionedPalettes = []
   palIndex = 0
   for palette in palettes:
@@ -834,7 +834,7 @@ def fetchGlobalPaletteTileRelative(tiles, options):
   logging.debug("palette fetch start")
   refPaletteImg = getReferencePaletteImage(options)  
   if refPaletteImg:
-    return fickFackHure(refPaletteImg['pixels'], options)
+    return fetchGlobalPaletteReference(refPaletteImg['pixels'], options)
   else:
     palettes = set(reducePaletteColorDepth( tile['palette']['color'], options ) for tile in tiles)
     mergedPalettes = palettes.copy()

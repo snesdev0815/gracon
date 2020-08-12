@@ -249,7 +249,7 @@ def writePatterns( outFile, patterns ):
       else:
         outFile.write( chr( SPCMOD_EMPTY_CHANNEL ) )
   
-  patternPointer.append( outFile.tell() - SPCMOD_PATTERN_DATA )	#relative pointer to end of last pattern. crude shit
+  patternPointer.append( outFile.tell() - SPCMOD_PATTERN_DATA )	#relative pointer to end of last pattern.
   return {
     'patterns'	: patternPointer,
     'end'		: outFile.tell()
