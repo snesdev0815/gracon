@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
 import os
+import re
 import sys
 import math
 import logging
@@ -34,7 +35,7 @@ SPCMOD_INVALID_PERIOD	= 0xff
 
 INSTR_RES_MULTI = 1
 
-validModSignatures = [ 'M.K.', '2CHN', '4CHN', '6CHN', '8CHN']
+validModSignatures = [ 'M.K.', '1CHN', '2CHN', '3CHN', '4CHN', '5CHN', '6CHN', '7CHN', '8CHN']
 
 
 globalSampleBuffer = {
@@ -200,12 +201,20 @@ def isValidModule( mod ):
 
 def getModuleChannelCount(mod):
   signature = mod[1080:1084]
-  if '2CHN' == signature:
+  if '1CHN' == signature:
+    return 1
+  elif '2CHN' == signature:
     return 2
+  elif '3CHN' == signature:
+    return 3
   elif signature in ['M.K.', '4CHN']:
     return 4
+  elif '5CHN' == signature:
+    return 5
   elif '6CHN' == signature:
     return 6
+  elif '7CHN' == signature:
+    return 7
   elif '8CHN' == signature:
     return 8
   else:
@@ -310,9 +319,8 @@ def writeInstruments( outFile, samplePointers, instruments ):
     outFile.write( chr( instruments[i]['volume'] ) )
     outFile.write( chr( (samplePointers[i]['repeatStart'] & 0xff00) >> 8 ) )
     outFile.write( chr( (samplePointers[i]['repeatStart'] & 0xff) ) )
-    outFile.write( chr( 1 if instruments[i]['isReport'] else 0 ) )
-    outFile.write( chr( 0 ) )
-    
+    outFile.write( chr(  (instruments[i]['adsr'] & 0xff00) >> 8  ) )
+    outFile.write( chr(  (instruments[i]['adsr'] & 0xff)  ) )
 
 def convertInstruments( inputInstruments ):
   convertedInstruments = []
@@ -330,7 +338,7 @@ def convertInstrument( inputInstrument ):
     'volume'		: paddedInstrument['volume'],
     'repeatStart'	: paddedInstrument['repeatStart'],
     'repeatFlag'	: paddedInstrument['repeatFlag'],
-    'isReport' : inputInstrument['isReport'],
+    'adsr' : inputInstrument['adsr'],
     'samples'		: convertInstrumentSamples2( paddedInstrument['samples'], paddedInstrument['repeatStart'], paddedInstrument['repeatFlag'] )
   }
 
@@ -341,7 +349,6 @@ def multiplyInstrumentResolution( inputInstrument, factor ):
     'volume'		: inputInstrument['volume'],
     'repeatStart'	: inputInstrument['repeatStart'] * factor,
     'repeatLength'	: inputInstrument['repeatLength'] * factor,
-    'isReport' : inputInstrument['isReport'],
     'samples'		: multiplySampleResolution( inputInstrument['samples'], factor )
   }
 
@@ -392,7 +399,6 @@ def padInstrumentSamples( inputInstrument ):
     'volume'		: inputInstrument['volume'],
     'repeatStart'	: len( preLoopSamples ),
     'repeatFlag'	: repeatFlag,
-    'isReport' : inputInstrument['isReport'],
     'samples'		: groupSamples( preLoopSamples + postLoopSamples ) if len( inputInstrument['samples'] ) >= BRR_BLOCK_SAMPLES else []
   }
 
@@ -795,7 +801,6 @@ def convertChannel( channel ):
   } if convertedPeriod or channel['effectData'] > 0 or channel['effectCommand'] > 0 or channel['instrument'] > 0 else {
     'valid'			: False
   }
-  
 
 
 def convertPeriod( inputPeriod ):
@@ -880,6 +885,11 @@ def getModuleInstruments( mod, currentSampleBufferPosition ):
 def getModuleInstrument( instrumentId, instrumentData, mod, sampleBufferPosition ):
   singleInstrument = instrumentData[ instrumentId * MOD_INSTRUMENT_DATA_LENGTH : ( instrumentId + 1 ) * MOD_INSTRUMENT_DATA_LENGTH ]
   name = singleInstrument[0:22]
+
+  m = re.search(r'(ADSR:(0x?[0-9A-Fa-f]{4}))', name)
+  #use ADSR default if sample has no ADSR information
+  adsr = 0x8EE0 if None is m else int(m.group(2), 16)
+
   instrument = {
     'id'        : instrumentId,
     'name'			: name,
@@ -889,7 +899,7 @@ def getModuleInstrument( instrumentId, instrumentData, mod, sampleBufferPosition
     'volume'		: ord( singleInstrument[25] ),
     'repeatStart'	: charWordToInt( singleInstrument[26:28] ),
     'repeatLength'	: checkInstrumentLength( charWordToInt( singleInstrument[28:30] ) ),
-    'isReport' : 'report' == name[0:6]
+    'adsr' : adsr
 
   }
 
