@@ -228,7 +228,7 @@ def writeOutputFile( outFile, mod ):
   writeSequence( outFile, mod['sequence'] )
   patternPointers = writePatterns( outFile, mod['patterns'] )
   writePatternPointers( outFile, patternPointers['patterns'] )
-  samplePointers = writeSamples2( outFile, patternPointers['end'], mod['instruments'] )
+  samplePointers = writeSamples( outFile, patternPointers['end'], mod['instruments'] )
   writeInstruments( outFile, samplePointers, mod['instruments'] )
   
 
@@ -339,7 +339,7 @@ def convertInstrument( inputInstrument ):
     'repeatStart'	: paddedInstrument['repeatStart'],
     'repeatFlag'	: paddedInstrument['repeatFlag'],
     'adsr' : inputInstrument['adsr'],
-    'samples'		: convertInstrumentSamples2( paddedInstrument['samples'], paddedInstrument['repeatStart'], paddedInstrument['repeatFlag'] )
+    'samples'		: convertInstrumentSamples( paddedInstrument['samples'], paddedInstrument['repeatStart'], paddedInstrument['repeatFlag'] )
   }
 
 def multiplyInstrumentResolution( inputInstrument, factor ):
