@@ -618,29 +618,65 @@ def fetchSpriteTileConfig( tile, tiles, palettes, options ):
 def writeTiles( tiles, options ):
   outFile = getOutputFile( options, ext='tiles' )
   for tile in tiles:
-	if tile['refId'] == None:
-	  writeBitplaneTile( outFile, tile, options )
+    if tile['refId'] == None:
+      writeBitplaneTile( outFile, tile, options )
   outFile.close()
 
 
 def writeBitplaneTile( outFile, tile, options ):
   bitplanes = fetchBitplanes( tile, options )
   for i in range( 0, len( bitplanes ), 2 ):
-	while bitplanes[i].notEmpty():
-	  outFile.write( chr( bitplanes[i].first() ) )
-	  outFile.write( chr( bitplanes[i+1].first() ) )
+    while bitplanes[i].notEmpty():
+      outFile.write( chr( bitplanes[i].first() ) )
+      outFile.write( chr( bitplanes[i+1].first() ) )
 
 
 def getTileWriteStream( tiles, options ):
   stream = []
-  for tile in tiles:
-	if tile['refId'] == None:
-	  bitplanes = fetchBitplanes( tile, options )
-	  for i in range( 0, len( bitplanes ), 2 ):
-		while bitplanes[i].notEmpty():
-		  stream.append(( chr( bitplanes[i].first() ) ))
-		  stream.append(( chr( bitplanes[i+1].first() ) ))
+  partitioned = []
+  target = 'pixel' if options.get('directcolor') else 'indexedPixel' 
+  slices = [item for sublist in [chunks(scanline, 8) for tile in tiles for scanline in tile[target] if tile['refId'] == None] for item in sublist]
+  #pp.pprint(slices)
+  targetLength = len(slices)/8
+  if 16 == options.get('tilesizey') and (targetLength & 0x7f) != 0:
+    targetLength += 0x80
+
+  for i in range(targetLength):
+    tile = []
+    for y in range(8):      
+      src = i*8+y
+      if 16 == options.get('tilesizex'):
+        #barrel shift left lower 4 bits if tilewidth = 16
+        src = (src & 0xFFF0) | ((src & 0x7) << 1) | ((src & 0x8) >> 3)
+      if 16 == options.get('tilesizey'):
+        #barrel shift left next 4 bits if tileheight = 16
+        src = (src & 0xFF0F) | ((src & 0x70) << 1) | ((src & 0x80) >> 3)
+        
+      #pp.pprint('src $%03x -> $%03x' % (i*8+y, src))
+      #pp.pprint(slices[src])
+      try:
+        tile.append(slices[src])
+      except IndexError:
+        tile.append([0,0,0,0,0,0,0,0])
+    partitioned.append(tile)
+    
+  #pp.pprint(('tiles', partitioned))
+  for tile in partitioned:
+    bitplanes = fetchBitplanes2( tile, options )
+    for i in range( 0, len( bitplanes ), 2 ):
+      while bitplanes[i].notEmpty():
+        stream.append(( chr( bitplanes[i].first() ) ))
+        stream.append(( chr( bitplanes[i+1].first() ) ))
   return stream
+
+def fetchBitplanes2( tile, options ):
+  bitplanes = []
+  for bitPlane in range( options.get('bpp') ):
+    bitplaneTile = BitStream()
+    for pixel in [pixel for scanline in tile for pixel in scanline]:
+      bitplaneTile.writeBit( pixel >> bitPlane )
+    bitplanes.append( bitplaneTile )
+  return bitplanes
 
 def getPaletteWriteStream( palettes, options ):
   stream = []
@@ -650,18 +686,17 @@ def getPaletteWriteStream( palettes, options ):
   return stream
 
 
-#gotta rewrite this so it always fetches 8x8 pixel sized tiles...
 def fetchBitplanes( inputTile, options ):
   bitplanes = []
   target = 'pixel' if options.get('directcolor') else 'indexedPixel' 
-  for tile in chunks(inputTile[target], options.get('tilesizey')):
+  for tile in [inputTile[target]]:
     for bitPlane in range( options.get('bpp') ):
       bitplaneTile = BitStream()
-      
       for pixel in [pixel for scanline in tile for pixel in scanline]:
         bitplaneTile.writeBit( pixel >> bitPlane )
       bitplanes.append( bitplaneTile )
   return bitplanes
+
 
 def chunks(l, n):
     return [l[i:i+n] for i in range(0, len(l), n)]  
@@ -1162,14 +1197,14 @@ def parseSpriteTiles( image, options, frameID):
   currentLeft = 0
   bigYTarget = 0
   while pos['y'] < image['resolutionY']:
-    if not checkLineFilled( image, pos, options ):
+    if not checkLineFilled( image, pos, options ) and options.get('optimize'):
       pos['y'] += 1 if options.get('optimize') else options.get('tilesizey')
       continue
 
     pos['x'] = 0
 
     while pos['x'] < image['resolutionX']:
-      if not checkTileRowFilled( image, pos, options ):
+      if not checkTileRowFilled( image, pos, options ) and options.get('optimize'):
         pos['x'] += 1 if options.get('optimize') else options.get('tilesizex')
         continue
 

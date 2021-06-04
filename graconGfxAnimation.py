@@ -117,6 +117,12 @@ FRAME_FLAG_TILES_PACKED = 0x1
 FRAME_FLAG_TILEMAP_PACKED = 0x2
 FRAME_FLAG_PALETTE_PACKED = 0x4
 
+FRAME_FLAG_HAS_TILEMAP_NORMAL = 0x08
+FRAME_FLAG_HAS_TILEMAP_BIG = 0x10
+FRAME_FLAG_HAS_PALETTE = 0x20
+FRAME_FLAG_HAS_TILES_NORMAL = 0x40
+FRAME_FLAG_HAS_TILES_BIG = 0x80
+
 FRAME_TILEMAP_NORMAL_MAX = 100
 FRAME_TILEMAP_BIG_MAX = 8
 
@@ -483,9 +489,6 @@ def main():
 
   #write frames
   for i in range(len(frames)):
-
-    flags = (FRAME_FLAG_TILES_PACKED | FRAME_FLAG_TILEMAP_PACKED) if options.get('isPacked') else FRAME_FLAG_TILEMAP_PACKED
-
     frame = frames[i]
     #write frame header
     pointer = FRAME_HEADER_SIZE
@@ -499,6 +502,17 @@ def main():
     incFile.write('.db %s \n' % frameDelays[i])
 
     #flags
+    flags = (FRAME_FLAG_TILES_PACKED | FRAME_FLAG_TILEMAP_PACKED) if options.get('isPacked') else FRAME_FLAG_TILEMAP_PACKED
+
+    flags |= FRAME_FLAG_HAS_TILEMAP_NORMAL if frame.allocTilemapLength > 0 else 0
+    flags |= FRAME_FLAG_HAS_TILEMAP_BIG if frame.allocTilemapBigLength > 0 else 0
+    
+    flags |= FRAME_FLAG_HAS_PALETTE if frame.allocPaletteLength > 0 else 0
+    flags |= FRAME_FLAG_HAS_TILES_NORMAL if frame.allocLenTilesNormal > 0 else 0
+    flags |= FRAME_FLAG_HAS_TILES_BIG if frame.allocLenTilesBig > 0 else 0
+
+    print('flags: 0x%00x' % flags)
+    
     outFile.write(chr(flags & 0xff))
     incFile.write('.db %s \n' % flags)
 

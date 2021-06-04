@@ -95,7 +95,6 @@ import xml.dom.minidom
 import graconUserOptions
 import graconGfx
 
-TILESIZE = 8
 META_TILESIZE = 16
 
 TILED_ID_FLIP_DIAGONAL = 0x20000000
@@ -192,12 +191,6 @@ def main():
       'max'         : 0xffff,
       'min'         : 1
       },
-    'mapwidth'   : {
-      'value'           : 256,
-      'type'            : 'int',
-      'max'         : 1024,
-      'min'         : 32
-      },
     'refpalette'        : {
       'value'           : '',
       'type'            : 'str'
@@ -232,6 +225,8 @@ def main():
   
   sys.setrecursionlimit(10000)
   
+  singleTileSize = options.get('tilesizex') * options.get('tilesizey') / 2
+
   options.set('outfilebase', options.get('outfile'))
   
   logging.debug('xml parse start')
@@ -273,17 +268,23 @@ def main():
     logging.error( 'Error, level orientation is not orthogonal' )
     sys.exit(1)
 
-  if not str(TILESIZE) == mapElement.getAttribute('tilewidth'):
-    logging.error( 'Error, tile width must be 8' )
+  if not str(options.get('tilesizex')) == mapElement.getAttribute('tilewidth'):
+    logging.error( 'Error, tile width must be %s' % options.get('tilesizex'))
     sys.exit(1)
 
-  if not str(TILESIZE) == mapElement.getAttribute('tileheight'):
-    logging.error( 'Error, tile height must be 8' )
+  if not str(options.get('tilesizey')) == mapElement.getAttribute('tileheight'):
+    logging.error( 'Error, tile height must be %s' % options.get('tilesizey'))
     sys.exit(1)
 
-  if not options.get('mapwidth') == int(mapInfo['width']):
-    logging.error( 'Error, map width must be %s, is %s' % (options.get('mapwidth'), mapInfo['width']))
+  #if not options.get('mapwidth') == int(mapInfo['width']):
+  if not int(mapInfo['width']) in (32,64,128,256,512,1024,2048):
+    logging.error( 'Error, map width must be multiple of 32, is %s' % mapInfo['width'])
     sys.exit(1)
+
+  if 0x10000 < int(mapInfo['width'])*int(mapInfo['height']):
+    logging.error( 'Error, map width*height is %s, must not exceed $s' % (int(mapInfo['width'])*int(mapInfo['height']), 0x10000))
+    sys.exit(1)
+
 
   min_x = 0
   min_y = 0
@@ -294,7 +295,7 @@ def main():
   scrollfactor_bg_status = 0
   hidden_treasure_count = 0
   timer_gold = 0
-  timer_silver = 0
+  echo_volume = "ECHO.VOLUME.MUTE"
   cgadsubConfig = 0
   isSubLevel = 0
   colorAdditionConfig = 0
@@ -344,8 +345,8 @@ def main():
       flagsScrollStatus = propertyElement.getAttribute('value')
     elif 'timer.gold' == propertyElement.getAttribute('name'):
       timer_gold = propertyElement.getAttribute('value')
-    elif 'timer.silver' == propertyElement.getAttribute('name'):
-      timer_silver = propertyElement.getAttribute('value')
+    elif 'echo.volume' == propertyElement.getAttribute('name'):
+      echo_volume = propertyElement.getAttribute('value')
     elif 'script.load' == propertyElement.getAttribute('name'):
       scriptLoad = propertyElement.getAttribute('value')
     elif 'timer' == propertyElement.getAttribute('name'):
@@ -447,6 +448,7 @@ def main():
     logging.error( 'map lacks collision layer (set layer property "type" to "collision")')
     sys.exit(1)
 
+  '''
   if not slopeLayer:
     logging.error( 'map lacks slope layer (set layer property "type" to "slope")')
     sys.exit(1)
@@ -454,7 +456,7 @@ def main():
   if not elevationLayer:
     logging.error( 'map lacks elevation layer (set layer property "type" to "elevation")')
     sys.exit(1)
-
+  '''
   bgLayers.sort(key=lambda layer: layer[0])
 
   bgLayers = map(lambda x: x[1], bgLayers)
@@ -463,10 +465,11 @@ def main():
     logging.error( 'map must have at least one and no more than 4 bg layers (set layer property "type" to "bg")')
     sys.exit(1)
 
+  '''
   if not (len(collisionLayer['data']) == len(elevationLayer['data']) and len(collisionLayer['data']) == len(slopeLayer['data'])):
     logging.error( 'collision, slope and elevation layer of map must all have the same layer size')
     sys.exit(1)
-    
+  '''
   logging.info('Parsed %s BG layers.' % len(bgLayers))
   
 
@@ -535,6 +538,22 @@ def main():
   palette = graconGfx.augmentOutIds(palette)
   logging.info('Optimizing tileset (merging similar-looking & mirrored tiles), this may take ages...')
   convertedTileset = graconGfx.augmentOutIds(graconGfx.optimizeTilesNew(graconGfx.palettizeTiles(convertedTileset, palette, options), None, options))
+  
+  #insert dummy tile 0:
+  emptyTile = {
+    'indexedPixel': [[0 for x in range(options.get('tilesizex'))] for y in range(options.get('tilesizey'))],
+    'refId': None,
+    'id': -1,
+    'palette':{'refId':None, 'id':-1},
+    'x':0,
+    'xMirror': False,
+    'y':0,
+    'yMirror': False,
+    'outId':0
+  }
+  
+  #pp.pprint(convertedTileset)
+
   tilecount = len([tile for tile in convertedTileset if None == tile['refId']])
   if 1024 < tilecount:
     logging.error( 'map tileset has %s tiles. maximum allowed quantity is 1024' % tilecount)
@@ -544,9 +563,8 @@ def main():
   logging.info('Applying tileset to layers...')
   bgLayers = convertLayerTilemaps(bgLayers, tileset, convertedTileset, palette, options, 1)
 
-  logging.debug(["bg layer status map size", len(statusLayers)])          
-          
-  convertedBgTileset = convertedTileset
+  logging.debug(["bg layer status map size", len(statusLayers)])
+
   bgLayers = combineBgLayers(bgLayers)
 
   logging.debug(["got layer count", len(bgLayers)])
@@ -560,7 +578,7 @@ def main():
 
   bgPalette = palette
   bgPaletteStream = graconGfx.getPaletteWriteStream(bgPalette, options)
-  bgTilesetStream = graconGfx.getTileWriteStream(convertedBgTileset, options)
+  bgTilesetStream = graconGfx.getTileWriteStream([emptyTile] + convertedTileset, options)
   bgTilesetStreamHash = 'hash%x' % math.fabs(hash(str(bgTilesetStream)))
   
   logging.info('Merged BG layers, got %s total...' % len(bgLayers))
@@ -654,8 +672,8 @@ def main():
     else:
       ModifiableIndexes[tileId]  = False
     
-    if 31 < mode:
-      logging.error( 'map collision layer tileID %s, x:%s,y:%s has illegal value %s. max allowed value is 15.' % (tileId, tileId % int(mapInfo['width']), math.floor(tileId/int(mapInfo['width'])), mode))
+    if 255 < mode:
+      logging.error( 'map collision layer tileID %s, x:%s,y:%s has illegal value %s. max allowed value is 255.' % (tileId, tileId % int(mapInfo['width']), math.floor(tileId/int(mapInfo['width'])), mode))
       sys.exit(1)
 
     collisionLayer['data'][tileId] = mode
@@ -686,8 +704,8 @@ def main():
   
   outFile.write('.db "LV" ;magic\n')
   outFile.write('.db "%s" ;name\n' % ((levelName+"                ")[:16]))
-  outFile.write('.dw %s ;tilesize x\n' % mapInfo['width'])
-  outFile.write('.dw %s ;tilesize y\n' % mapInfo['height'])
+  outFile.write('.dw %s ;map-size x\n' % mapInfo['width'])
+  outFile.write('.dw %s ;map-size y\n' % mapInfo['height'])
   outFile.write('.dw %s ;left level border\n' % min_x)
   outFile.write('.dw %s ;top level border\n' % min_y)
   outFile.write('.dw %s ;right level border\n' % max_x)
@@ -709,7 +727,7 @@ def main():
   outFile.write('.db %s ;scrollfactor status layer\n' % scrollfactor_bg_status)  
   
   outFile.write('.dw %s ;timer gold\n' % timer_gold)  
-  outFile.write('.dw %s ;timer silver\n' % timer_silver)
+  outFile.write('.db %s ;echo volume\n' % echo_volume)
   outFile.write('.db %s ;timer mode \n' % timer)
   outFile.write('.dw %s ;loader script\n' % scriptLoad)
 
@@ -718,7 +736,7 @@ def main():
 
   outFile.write('.dw %s ;absolute tileset pointer\n' % bgTilesetStreamHash)
   outFile.write('.db :%s ;absolute tileset pointer\n' % bgTilesetStreamHash)
-  outFile.write('.dw %s ;tileset length\n' % (len(bgTilesetStream)+32) )
+  outFile.write('.dw %s ;tileset length\n' % len(bgTilesetStream))
 
   if not statusLayer:
     outFile.write('.dw 0 ;absolute statustileset pointer\n')
@@ -776,7 +794,7 @@ def main():
   outFile.write('.export %s.defined\n' % bgTilesetStreamHash)
   outFile.write('.section %s superfree\n' % bgTilesetStreamHash)
 
-  tileset = [chr(0) for i in range(32)] + bgTilesetStream
+  tileset = bgTilesetStream
   packedTileset = graconGfx.compress(tileset)
 
   outFile.write('%s: ;packed tile data\n %s\n\n' % (bgTilesetStreamHash, getByteList(packedTileset)))
@@ -792,7 +810,7 @@ def main():
 
     outFile.write('.section %s superfree\n' % statusTilesetStreamHash)
     
-    outFile.write('%s: ;tile data\n %s ;empty tile\n %s\n\n' % (statusTilesetStreamHash, getByteIntList([0 for i in range(32)]), getByteList(statusTilesetStream)))
+    outFile.write('%s: ;tile data\n %s ;empty tile\n %s\n\n' % (statusTilesetStreamHash, getByteIntList([0 for i in range(singleTileSize)]), getByteList(statusTilesetStream)))
 
     outFile.write('%s.end:\n' % statusTilesetStreamHash)
     outFile.write('.ends\n')
@@ -863,6 +881,18 @@ def convertLayerTilemaps(bgLayers, tileset, convertedTileset, palette, options, 
             bgLayers[layerId]['data'][tileId] ^= 1 << 15
           if tileIdWithFlags & TILED_ID_FLIP_X:
             bgLayers[layerId]['data'][tileId] ^= 1 << 14
+          #16x16 tiles still use 8x8 tile IDs so they need to be doubled
+          #if options.get('tilesizex') == 16:
+            #bgLayers[layerId]['data'][tileId] = bgLayers[layerId]['data'][tileId] & 0xFC00 | ((bgLayers[layerId]['data'][tileId] & 0x1ff) << 1)
+
+          if 16 == options.get('tilesizex'):
+            #barrel shift left lower 4 bits if tilewidth = 16
+            bgLayers[layerId]['data'][tileId] = bgLayers[layerId]['data'][tileId] & 0xFC00 | ((bgLayers[layerId]['data'][tileId] & 0x1ff) << 1)
+          if 16 == options.get('tilesizey'):
+            #barrel shift left next 4 bits if tileheight = 16
+            bgLayers[layerId]['data'][tileId] = bgLayers[layerId]['data'][tileId] & 0xFC0F | ((bgLayers[layerId]['data'][tileId] & 0x1f0) << 1)
+
+
         except IndexError:
           logging.info('Tile id %s contained in layer %s not present in tileset, reverting to tile id 0.' % (tileId, layerId))
           bgLayers[layerId]['data'][tileId] = 0
@@ -952,6 +982,7 @@ def getMetaTilesAbsolute(layers, width, noPackIndexes, ModifiableLayers):
 
     metaLayer = []
 
+    #always fetch full map size because ROM code expects static size meta maps
     for x in range(int(math.ceil(len(layer['data'])/META_TILESIZE))):
         z = x*META_TILESIZE
         bufferIndex = -1
@@ -976,6 +1007,10 @@ def getMetaTilesAbsolute(layers, width, noPackIndexes, ModifiableLayers):
             actualTiles.append(layer['data'][z+e])
 
         metaLayer.append(bufferIndex*2)
+    #pad out list to static length:
+    #pp.pprint(("completed meta layer length", len(metaLayer)))
+    metaLayer += [0] * (0x1000 - len(metaLayer))
+
     layerID += 1
     metaLayers.append(metaLayer)
   logging.debug("done fetching meta")
