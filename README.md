@@ -17,6 +17,7 @@ Primarily written for personal use, unfit for general public usage.
 |  graconMusic.py      | Converts ProTracker mod-file to custom music format. | Sample length and loop points should be multiple of 16. |
 |  graconPaletteAnimation.py      | Converts folders of graphics files (png, gif, bmp etc.) to palette animation targetting PPU CGRAM. | |
 |  graconText.py      | Converts folder of text files to assembler include files (wla-dx format). | Supports multiple languages, generates corresponding lookup tables. |
+|  graconSpriteSheet.py      | Converts single animation file image. |  |
 
 > **Dependencies**
 > - python2.7
