@@ -72,7 +72,13 @@ def main():
       'type'            : 'int',
       'max'         : 8,
       'min'         : 1
-      },      
+      },
+    'bgCol'       : {
+      'value'           : 0,
+      'type'            : 'int',
+      'max'         : 3,
+      'min'         : 0
+      }
   })
   
   if not os.path.exists(options.get('infile')):

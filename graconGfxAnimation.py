@@ -502,7 +502,10 @@ def main():
     incFile.write('.db %s \n' % frameDelays[i])
 
     #flags
-    flags = (FRAME_FLAG_TILES_PACKED | FRAME_FLAG_TILEMAP_PACKED) if options.get('isPacked') else FRAME_FLAG_TILEMAP_PACKED
+    if options.get('statictiles'):
+      flags = FRAME_FLAG_TILES_PACKED if options.get('isPacked') else 0
+    else:
+      flags = (FRAME_FLAG_TILES_PACKED | FRAME_FLAG_TILEMAP_PACKED) if options.get('isPacked') else FRAME_FLAG_TILEMAP_PACKED
 
     flags |= FRAME_FLAG_HAS_TILEMAP_NORMAL if frame.allocTilemapLength > 0 else 0
     flags |= FRAME_FLAG_HAS_TILEMAP_BIG if frame.allocTilemapBigLength > 0 else 0
@@ -640,6 +643,7 @@ def main():
 stm%s:
     """ % (tilemapHash,tilemapHash,tilemapHash,tilemapHash))
 
+    '''
     counter = 0
     incFile.write('.accu 16\n.index 16\n')
     for tile in chunks(frame.mapBig, 4):
@@ -649,6 +653,7 @@ stm%s:
       incFile.write('\tGENERATE_SPRITE_NORMAL $%02x $%02x $%02x%02x $%02x \n' % (ord(tile[0]), ord(tile[1]), ord(tile[3]), ord(tile[2]), counter))
       counter += 1
     incFile.write('rtl\n')
+    '''
 
     incFile.write("""
 .else
@@ -1125,7 +1130,7 @@ class Frame():
     logging.debug("tilemap len norm %s big %s" % (len(normal[1]), len(big[1])))
     #self.tilemap = [chr(ord(byte)) for byte in graconGfx.compress(normal[1])] if 'bg' == options.get('mode') else [chr(ord(byte)) for byte in self.compileSpriteTilemapCode(normal[1], big[1])]
     if 'bg' == options.get('mode'):
-        self.tilemap = [chr(ord(byte)) for byte in graconGfx.compress(normal[1])]
+        self.tilemap = [chr(ord(byte)) for byte in graconGfx.compress(normal[1])] if not options.get('statictiles') else normal[1]
         self.allocTilemapLength = len(normal[1])
         self.allocTilemapBigLength = 0
     elif options.get('compileTilemapCode'):

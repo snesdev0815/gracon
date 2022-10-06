@@ -185,7 +185,7 @@ def main():
   'isPacked'        : {
     'value'           : False,
     'type'            : 'bool'
-    },    
+    },
   'bigtilethreshold' : {  #number of empty tiles to allow when parsing big mode tiles (usually 32x32 sprites)
     'value'     : 2,
     'type'      : 'int',
@@ -381,11 +381,20 @@ def writeBgTileMap(tiles, palettes, options):
 	outFile.write( chr( (tile & 0xff00) >> 8 ) )
   outFile.close()
 
-  
-def getBgTileMapStreamGlobal(tiles, globalTiles, palettes, options, xMirror):
+def adjustTileId(tileId, options)  :
+  if 16 == options.get('tilesizex'):
+    #barrel shift left lower 4 bits if tilewidth = 16
+    tileId = tileId & 0xFC00 | ((tileId & 0x1ff) << 1)
+  if 16 == options.get('tilesizey'):
+    #barrel shift left next 4 bits if tileheight = 16
+    tileId = tileId & 0xFC0F | ((tileId & 0x1f0) << 1)
+  return tileId
+
+
+def getBgTileMapStreamGlobal(tiles, globalTiles, palettes, options, xMirror, yMirror):
   resolutionX = options.get('resolutionx')/options.get('tilesizex')
   resolutionY = options.get('resolutiony')/options.get('tilesizey')
-  emptyTile = getEmptyTileConfig(globalTiles, palettes)
+  emptyTile = adjustTileId(getEmptyTileConfig(globalTiles, palettes)['concatConfig'], options)
   logging.debug("resolution: %s x %s " % (resolutionX, resolutionY))
   if options.get('partitionTilemap'):    
     screensize = 0x400
@@ -394,14 +403,17 @@ def getBgTileMapStreamGlobal(tiles, globalTiles, palettes, options, xMirror):
     elif resolutionX > 32:
       screensize = screensize*2
     else:
-      screensize = 0x400
+      #allow size optimization for images less tall than one screen
+      #screensize = screensize
+      screensize = 0x20 * resolutionY
   else:
     screensize = resolutionX * resolutionY
-  bgTilemap = [emptyTile['concatConfig'] for i in range(screensize)]
+  bgTilemap = [emptyTile for i in range(screensize)]
   for tile in tiles:
     tilePosX = int(math.floor(tile['x'] / options.get('tilesizex')))
     tilePosY = int(math.floor(tile['y'] / options.get('tilesizey')))
-    tileConfig = fetchTileConfig( tile, globalTiles, palettes )['concatConfig']
+    tileConfig = adjustTileId(fetchTileConfig( tile, globalTiles, palettes )['concatConfig'], options)
+
     if options.get('partitionTilemap'):
       partition = 0
       if resolutionX > 32 and resolutionY > 32:
@@ -431,7 +443,7 @@ def getBgTileMapStream(tiles, palettes, options, xMirror, yMirror):
 
   resolutionX = options.get('resolutionx')/options.get('tilesizex')
   resolutionY = options.get('resolutiony')/options.get('tilesizey')
-  emptyTile = getEmptyTileConfig(tiles, palettes)
+  emptyTile = adjustTileId(getEmptyTileConfig(tiles, palettes)['concatConfig'], options)
   logging.debug("resolution: %s x %s " % (resolutionX, resolutionY))
   if options.get('partitionTilemap'):    
     screensize = 0x400
@@ -443,11 +455,11 @@ def getBgTileMapStream(tiles, palettes, options, xMirror, yMirror):
       screensize = 0x400
   else:
     screensize = resolutionX * resolutionY
-  bgTilemap = [emptyTile['concatConfig'] for i in range(screensize)]
+  bgTilemap = [emptyTile for i in range(screensize)]
   for tile in tiles:
     tilePosX = int(math.floor(tile['x'] / options.get('tilesizex')))
     tilePosY = int(math.floor(tile['y'] / options.get('tilesizey')))
-    tileConfig = fetchTileConfig( tile, tiles, palettes )['concatConfig']
+    tileConfig = adjustTileId(fetchTileConfig( tile, tiles, palettes )['concatConfig'], options)
     if options.get('partitionTilemap'):
       partition = 0
       if resolutionX > 32 and resolutionY > 32:
@@ -473,12 +485,12 @@ def getBgTileMapStream(tiles, palettes, options, xMirror, yMirror):
 
 
 def getBgTilemaps(tiles, palettes, options):
-  emptyTile = getEmptyTileConfig(tiles, palettes)
-  bgTilemaps = [[emptyTile['concatConfig'] for i in range(BG_TILEMAP_SIZE * BG_TILEMAP_SIZE)] for i in range(getCurrentTilemap(options.get('resolutionx'), options.get('resolutiony'), options) + 1)]
+  emptyTile = adjustTileId(getEmptyTileConfig(tiles, palettes)['concatConfig'], options)
+  bgTilemaps = [[emptyTile for i in range(BG_TILEMAP_SIZE * BG_TILEMAP_SIZE)] for i in range(getCurrentTilemap(options.get('resolutionx'), options.get('resolutiony'), options) + 1)]
   for tile in tiles:
     mapId = getCurrentTilemap(tile['x'], tile['y'], options)
     tilePos = getPositionInTilemap(tile['x'], tile['y'], options)
-    tileConfig = fetchTileConfig( tile, tiles, palettes )['concatConfig']
+    tileConfig = adjustTileId(fetchTileConfig( tile, tiles, palettes )['concatConfig'], options)
 
     try:
       bgTilemaps[mapId][tilePos] = tileConfig
@@ -639,7 +651,7 @@ def getTileWriteStream( tiles, options ):
   #pp.pprint(slices)
   targetLength = len(slices)/8
   if 16 == options.get('tilesizey') and (targetLength & 0x7f) != 0:
-    targetLength += 0x80
+    targetLength = (targetLength & 0xff80) + 0x80
 
   for i in range(targetLength):
     tile = []
@@ -657,7 +669,9 @@ def getTileWriteStream( tiles, options ):
       try:
         tile.append(slices[src])
       except IndexError:
+        #pad out to multiple of 16 so that end of tiles gets converted correctly
         tile.append([0,0,0,0,0,0,0,0])
+
     partitioned.append(tile)
     
   #pp.pprint(('tiles', partitioned))
@@ -1371,6 +1385,9 @@ def checkTileFilledThreshold( image, pos, options ):
 
 def checkBigTileFilledThreshold( image, pos, options ):
   misses = 16
+  #never allow big tile outside right image border, causes problems with x-mirroring
+  if image['resolutionX'] < pos['x']+32:
+    return False
   for ypos in range( pos['y'], pos['y']+32, 8 ):
     for xpos in range( pos['x'], pos['x']+32, 8 ):
       if checkTileFilledThreshold( image, {'x':xpos,'y':ypos}, options ):
@@ -1404,9 +1421,9 @@ def isPixelOpaque( pixels, yPos, xPos, options ):
 
 def getPixel( pixels, yPos, xPos, options ):
   try:
-	return pixels[yPos][xPos]
+    return pixels[yPos][xPos]
   except IndexError:
-	 return options.get('transcol')
+    return options.get('transcol')
 
 
 def getInitialSpritePosition( image, options ):
